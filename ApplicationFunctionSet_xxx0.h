@@ -28,6 +28,7 @@ public:
   void ApplicationFunctionSet_SensorDataUpdate(void);   //Sensor Data Update
   void ApplicationFunctionSet_SerialPortDataAnalysis(void);
   void ApplicationFunctionSet_CustomApp(void);        //Custom Application Manager
+  void ApplicationFunctionSet_AutoPilotWithObstacleAvoidance(void);
   void ApplicationFunctionSet_IRrecv(void);
   void ApplicationFunctionSet_AutoPilot(void);       //Custom Application AutoPilot
 
@@ -73,7 +74,7 @@ private:
 
 public:
   boolean Car_LeaveTheGround = true;
-
+  boolean Recently_VisitedRight = false;
   /*Sensor Threshold Setting*/
   const float VoltageDetection = 7.00;
   const uint8_t ObstacleDetection = 20;
