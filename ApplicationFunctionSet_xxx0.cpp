@@ -24,6 +24,7 @@
 
 ApplicationFunctionSet Application_FunctionSet;
 int CustomAppSerialPortDataAnalysis(void);
+void ObstacleHelper(void);
 
 /*Hardware device object list*/
 MPU6050_getdata AppMPU6050getdata;
@@ -69,6 +70,9 @@ enum SmartRobotCarMotionControl
   stop_it        //(9)
 };               //direction方向:（1）、（2）、 （3）、（4）、（5）、（6）
 
+//This variable is used by AutopilotWithObstacleAvoidance to signal if the car should turn left or right when it senses an object in front
+char LastTrackEdgeVisited = 'n';
+char currentDirection = 's';
 /*Mode Control List*/
 enum SmartRobotCarFunctionalModel
 {
@@ -88,7 +92,8 @@ enum SmartRobotCarFunctionalModel
   CMD_ServoControl,                       /*Servo Motor Control*/
   CMD_LightingControl_TimeLimit,          /*RGB Lighting Control With Time Limit*/
   CMD_LightingControl_NoTimeLimit,        /*RGB Lighting Control Without Time Limit*/
-  Custom_mode,
+  Custom_mode,            /*Stay Within The Lines Mode*/
+  Custom_mode2,           /*Stay Within The Lines And Avoid Obstacles Mode*/
 
 };
 
@@ -126,6 +131,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Init(void)
   //   /*Clear serial port buffer...*/
   // }
   Application_SmartRobotCarxxx0.Functional_Mode = Standby_mode;
+  LastTrackEdgeVisited = 'n';
 }
 
 /*ITR20001 Check if the car leaves the ground*/
@@ -226,6 +232,10 @@ static void ApplicationFunctionSet_SmartRobotCarMotionControl(SmartRobotCarMotio
     UpperLimit = 180;
     break;
   case Custom_mode:
+    Kp = 2;
+    UpperLimit = 180;
+    break;
+  case Custom_mode2:
     Kp = 2;
     UpperLimit = 180;
     break;
@@ -385,6 +395,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SensorDataUpdate(void)
 void ApplicationFunctionSet::ApplicationFunctionSet_Bootup(void)
 {
   Application_SmartRobotCarxxx0.Functional_Mode = Standby_mode;
+  LastTrackEdgeVisited = 'n';
 }
 
 static void CMD_Lighting(uint8_t is_LightingSequence, int8_t is_LightingColorValue_R, uint8_t is_LightingColorValue_G, uint8_t is_LightingColorValue_B)
@@ -536,6 +547,11 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void)
       }
       break;
       ///////////
+    case Custom_mode2:
+    {
+      AppRBG_LED.DeviceDriverSet_RBGLED_xxx(0 /*Duration*/, 2 /*Traversal_Number*/, CRGB::Green);
+    }
+    
     case /* constant-expression */ ObstacleAvoidance_mode:
       /* code */
       {
@@ -562,30 +578,6 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void)
 
 
 //Serial.begin(9600);
-/*AutoPiolot mode*/
-void ApplicationFunctionSet::ApplicationFunctionSet_CustomApp(void)
-{
-  Application_SmartRobotCarxxx0.Functional_Mode == TraceBased_mode;
-//  Serial.begin(9600);
-//  Serial.println("CustomApp Executed");
-//  int status = CustomAppSerialPortDataAnalysis();
-//  if (status)
-//  {
-//    switch (status)
-//    {
-//      case 1:
-//        //Serial.begin(9600);
-//        Serial.println("Condition Met"); 
-//        ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(); 
-//        break;
-//      default:
-//      //Serial.begin(9600);
-//      Serial.println("Default");
-//      //Serial.println("Status = " + status); 
-//      break;
-//    }
-//  }
-}
 
 /*AutoPilot SerialPortDataAnalysis Helper Function*/
 int CustomAppSerialPortDataAnalysis(void)
@@ -615,12 +607,10 @@ int CustomAppSerialPortDataAnalysis(void)
 //First trial the speeds were set to 100, 100,and 200 (like tracking mode) and the robot blew right through the black line
 //Second trial we slowed all speeds to 20 and the car just emitted a high pitch whine
 //Third trial increased speeds back to 100 and added default forward motion and disabled BlindDetection logic and the robot
-//navigates straight and banks right if it sees black line to the left and banks left if it sees black line to the right
-//next we need to add obstacle avoidance logic and then mayb work on trying to center the car inside the lines
+//Fourth trial decreased speeds to 50 and added branch condition if middle sensor sees black line then bank left; the robot navigated the whole course successfully
 /*AutoPiolotHelper*/
 void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
   static boolean timestamp = true;
-  //static boolean BlindDetection = true;
   static boolean BlindDetection = false;
   static unsigned long MotorRL_time = 0;
   if (Application_SmartRobotCarxxx0.Functional_Mode == Custom_mode){
@@ -631,45 +621,27 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
     }
     ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 100);
     
-#if _Test_print
-    static unsigned long print_time = 0;
-    if (millis() - print_time > 500){
-      print_time = millis();
-      Serial.print("ITR20001_getAnaloguexxx_L=");
-      Serial.println(getAnaloguexxx_L);
-      Serial.print("ITR20001_getAnaloguexxx_M=");
-      Serial.println(getAnaloguexxx_M);
-      Serial.print("ITR20001_getAnaloguexxx_R=");
-      Serial.println(getAnaloguexxx_R);
-    }
-#endif
     if (function_xxx(TrackingData_R, TrackingDetection_S, TrackingDetection_E)){
       /*Black line seen on right only, turn left*/
       ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
       timestamp = true;
-      //BlindDetection = true;
     }else if (function_xxx(TrackingData_L, TrackingDetection_S, TrackingDetection_E)){
       /*Black line seen on left only, turn right*/
       ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
       timestamp = true;
-      //BlindDetection = true;
     }else if (function_xxx(TrackingData_M, TrackingDetection_S, TrackingDetection_E)){
       //Black line seen in the middle, turn left
       ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
       timestamp = true;
-      //BlindDetection = true;
    } else {
     ////The car is not on the black line. Go straight 
       ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
       timestamp = true;
-      //BlindDetection = true;
-      //BlindDetection = false;
-      
+            
       if (timestamp == true){
         //acquire timestamp
         timestamp = false;
         MotorRL_time = millis();
-        //ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
       }
       
       /*Blind Detection*/
@@ -682,16 +654,229 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
         // Blind Detection ...s ?
         BlindDetection = false;
         ApplicationFunctionSet_SmartRobotCarMotionControl(Forward,100);
-        //ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it) 0);
-      }
-      
+      }      
     }
   }else if (false == timestamp){
-    //BlindDetection = true;
     timestamp = true;
     MotorRL_time = 0;
   }
 }
+
+//navigates straight and banks right if it sees black line to the left and banks left if it sees black line to the right
+//obstacle avoidance logic and then mayb work on trying to center the car inside the lines
+/*AutoPiolotHelper*/
+void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilotWithObstacleAvoidance(void){
+  static boolean timestamp = true;
+  uint16_t get_Distance;
+  if (Application_SmartRobotCarxxx0.Functional_Mode == Custom_mode2){
+    //Check if the car leaves the ground
+    if (Car_LeaveTheGround == false){
+      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+      return;
+    }
+    ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);      
+    if(function_xxx(TrackingData_R, TrackingDetection_S, TrackingDetection_E)){// && LastTrackEdgeVisited != 'l'){
+        ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+        Recently_VisitedRight = true;
+        timestamp = true; 
+      } else if(function_xxx(TrackingData_L, TrackingDetection_S, TrackingDetection_E)){// && LastTrackEdgeVisited != 'r'){
+        ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+        Recently_VisitedRight = false;
+        timestamp = true;
+      } else {
+        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
+        if(function_xxx(get_Distance, 0, 30)){
+          if(Recently_VisitedRight == true){
+            ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+            delay_xxx(50);
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+            delay_xxx(500);
+          } else {
+            ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+            delay_xxx(50);
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+            delay_xxx(500);
+          }
+        }
+        ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
+        timestamp = true;
+      }
+    }
+}
+
+//New Function
+/*
+  Obstacle Avoidance Mode
+*/
+void ObstacleHelper(void){
+
+  /*
+  static boolean first_is = true;
+    uint8_t switc_ctrl = 0;
+    uint16_t get_Distance;
+    if (first_is == true) //Enter the mode for the first time, and modulate the steering gear to 90 degrees
+    {
+      AppServo.DeviceDriverSet_Servo_control(90);
+      first_is = false;
+    }
+
+    AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
+    if (function_xxx(get_Distance, 0, 20))
+    {
+      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+
+      for (uint8_t i = 1; i < 6; i += 2) //1、3、5 Omnidirectional detection of obstacle avoidance status
+      {
+        AppServo.DeviceDriverSet_Servo_control(30 * i );
+        delay_xxx(1);
+        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
+
+        if (function_xxx(get_Distance, 0, 20))
+        {
+          ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+          if (5 == i)
+          {
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Backward, 50);
+            delay_xxx(500);
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+            delay_xxx(50);
+            first_is = true;
+            break;
+          }
+        }
+        else
+        {
+          switc_ctrl = 0;
+          switch (i)
+          {
+          case 1:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+            break;
+          case 3:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
+            break;
+          case 5:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+            break;
+          }
+          delay_xxx(50);
+          first_is = true;
+          break;
+        }
+      }
+    }
+    else if (function_xxx(get_Distance, 21, 70)){
+      for (uint8_t i = 1; i < 6; i += 2){
+        AppServo.DeviceDriverSet_Servo_control(30 * i);
+        delay_xxx(1);
+        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
+
+        if (function_xxx(get_Distance, 0, 20)){
+          if (5 == i){
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Backward, 50);
+            delay_xxx(500);
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+            delay_xxx(50);
+            first_is = true;
+            break;
+          }
+        } else {
+          switc_ctrl = 0;
+          switch (i)
+          {
+          case 1:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(RightForward, 50);
+            break;
+            //ApplicationFunctionSet_SmartRobotCarMotionControl(RightForward, 50);
+          case 3:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
+            break;
+          case 5:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(LeftForward, 50);
+            break;
+          }
+          delay_xxx(50);
+          first_is = true;
+          break;
+        }
+      }
+    } else {
+      ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
+    }
+    */
+static bool first_is = true;
+  if (Application_SmartRobotCarxxx0.Functional_Mode == ObstacleAvoidance_mode)
+  {
+    uint8_t switc_ctrl = 0;
+    uint16_t get_Distance;
+    if (first_is == true) //Enter the mode for the first time, and modulate the steering gear to 90 degrees
+    {
+      AppServo.DeviceDriverSet_Servo_control(90 /*Position_angle*/);
+      first_is = false;
+    }
+    //if (Car_LeaveTheGround == false)
+    //{
+      //ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+      //return;
+    //}
+
+    AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance /*out*/);
+    if (function_xxx(get_Distance, 0, 20))
+    {
+      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+
+      for (uint8_t i = 1; i < 6; i += 2) //1、3、5 Omnidirectional detection of obstacle avoidance status
+      {
+        AppServo.DeviceDriverSet_Servo_control(30 * i /*Position_angle*/);
+        delay_xxx(1);
+        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance /*out*/);
+
+        if (function_xxx(get_Distance, 0, 20))
+        {
+          ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+          if (5 == i)
+          {
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Backward, 150);
+            delay_xxx(500);
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 150);
+            delay_xxx(50);
+            first_is = true;
+            break;
+          }
+        }
+        else
+        {
+          switc_ctrl = 0;
+          switch (i)
+          {
+          case 1:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 150);
+            break;
+          case 3:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 150);
+            break;
+          case 5:
+            ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 150);
+            break;
+          }
+          delay_xxx(50);
+          first_is = true;
+          break;
+        }
+      }
+    }
+    else //if (function_xxx(get_Distance, 20, 50))
+    {
+      ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 150);
+    }
+  }
+  else
+  {
+    first_is = true;
+  }
+}
+
+//End of new function
 
 /*Rocker control mode*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Rocker(void)
@@ -790,20 +975,20 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Tracking(void)
 */
 void ApplicationFunctionSet::ApplicationFunctionSet_Obstacle(void)
 {
-  static boolean first_is = true;
+  static bool first_is = true;
   if (Application_SmartRobotCarxxx0.Functional_Mode == ObstacleAvoidance_mode)
   {
     uint8_t switc_ctrl = 0;
     uint16_t get_Distance;
-    if (Car_LeaveTheGround == false)
-    {
-      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
-      return;
-    }
     if (first_is == true) //Enter the mode for the first time, and modulate the steering gear to 90 degrees
     {
       AppServo.DeviceDriverSet_Servo_control(90 /*Position_angle*/);
       first_is = false;
+    }
+    if (Car_LeaveTheGround == false)
+    {
+      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+      return;
     }
 
     AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance /*out*/);
@@ -851,11 +1036,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_Obstacle(void)
         }
       }
     }
-    else if (function_xxx(get_Distance, 20, 70))
-    {
-      //stuff
-    }
-    else
+    else //if (function_xxx(get_Distance, 20, 50))
     {
       ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 150);
     }
@@ -2100,6 +2281,10 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
         else if (4 == doc["D1"])
         {
           Application_SmartRobotCarxxx0.Functional_Mode = Custom_mode;
+        } 
+        else if (5 == doc["D1"])
+        {
+          Application_SmartRobotCarxxx0.Functional_Mode = Custom_mode2;
         }
 
 #if _is_print
