@@ -5,6 +5,7 @@
  * @LastEditors: Changhua
  * @Description: Smart Robot Car V4.0
  * @FilePath: 
+ * 
  */
 #include <avr/wdt.h>
 //#include <hardwareSerial.h>
@@ -16,6 +17,7 @@
 #include "ArduinoJson-v6.11.1.h" //ArduinoJson
 #include "MPU6050_getdata.h"
 //#include <serial.h>
+#include <math.h>
 
 #define _is_print 1
 #define _Test_print 0
@@ -94,7 +96,7 @@ enum SmartRobotCarFunctionalModel
   CMD_LightingControl_NoTimeLimit,        /*RGB Lighting Control Without Time Limit*/
   Custom_mode,            /*Stay Within The Lines Mode*/
   Custom_mode2,           /*Stay Within The Lines And Avoid Obstacles Mode*/
-
+  Custom_mode3,           /*Navigate from location A to location B Mode*/
 };
 
 /*Application Management list*/
@@ -236,6 +238,10 @@ static void ApplicationFunctionSet_SmartRobotCarMotionControl(SmartRobotCarMotio
     UpperLimit = 180;
     break;
   case Custom_mode2:
+    Kp = 2;
+    UpperLimit = 180;
+    break;
+  case Custom_mode3:
     Kp = 2;
     UpperLimit = 180;
     break;
@@ -552,6 +558,11 @@ void ApplicationFunctionSet::ApplicationFunctionSet_RGB(void)
       AppRBG_LED.DeviceDriverSet_RBGLED_xxx(0 /*Duration*/, 2 /*Traversal_Number*/, CRGB::Green);
     }
     
+    case Custom_mode3:
+      {
+        AppRBG_LED.DeviceDriverSet_RBGLED_xxx(0,2,CRGB::Violet);
+      }
+      break;
     case /* constant-expression */ ObstacleAvoidance_mode:
       /* code */
       {
@@ -610,6 +621,8 @@ int CustomAppSerialPortDataAnalysis(void)
 //Fourth trial decreased speeds to 50 and added branch condition if middle sensor sees black line then bank left; the robot navigated the whole course successfully
 /*AutoPiolotHelper*/
 void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
+  //////////////////////
+  /*
   static boolean timestamp = true;
   static boolean BlindDetection = false;
   static unsigned long MotorRL_time = 0;
@@ -622,11 +635,11 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
     ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 100);
     
     if (function_xxx(TrackingData_R, TrackingDetection_S, TrackingDetection_E)){
-      /*Black line seen on right only, turn left*/
+      //Black line seen on right only, turn left
       ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
       timestamp = true;
     }else if (function_xxx(TrackingData_L, TrackingDetection_S, TrackingDetection_E)){
-      /*Black line seen on left only, turn right*/
+      //Black line seen on left only, turn right
       ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
       timestamp = true;
     }else if (function_xxx(TrackingData_M, TrackingDetection_S, TrackingDetection_E)){
@@ -644,7 +657,7 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
         MotorRL_time = millis();
       }
       
-      /*Blind Detection*/
+      //Blind Detection
       
       if ((function_xxx((millis() - MotorRL_time), 0, 200) || function_xxx((millis() - MotorRL_time), 1600, 2000)) && BlindDetection == true){
         ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 100);
@@ -660,6 +673,8 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilot(void){
     timestamp = true;
     MotorRL_time = 0;
   }
+  */
+  /////////////////
 }
 
 //navigates straight and banks right if it sees black line to the left and banks left if it sees black line to the right
@@ -689,13 +704,37 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilotWithObstacleAvoidan
           if(Recently_VisitedRight == true){
             ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
             delay_xxx(50);
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
-            delay_xxx(500);
+            for(int i = 0; i < 5; ++i){
+              //ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+              //delay_xxx(100);
+              //tracking if branch
+              if(function_xxx(TrackingData_L, TrackingDetection_S, TrackingDetection_E)){
+                ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+                Recently_VisitedRight = false;
+                delay_xxx(100);
+              } else {
+                ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+                delay_xxx(100);
+              }              
+            }
+            //ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+            //delay_xxx(500);
           } else {
             ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
             delay_xxx(50);
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
-            delay_xxx(500);
+            //ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+            //delay_xxx(100);
+            //tracking if branch
+            if(function_xxx(TrackingData_R, TrackingDetection_S, TrackingDetection_E)){
+              ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+              Recently_VisitedRight = true;
+              delay_xxx(100);
+            } else {
+              ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+              delay_xxx(100);
+            }
+            //ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+            //delay_xxx(500);
           }
         }
         ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
@@ -704,179 +743,102 @@ void ApplicationFunctionSet::ApplicationFunctionSet_AutoPilotWithObstacleAvoidan
     }
 }
 
-//New Function
-/*
-  Obstacle Avoidance Mode
-*/
-void ObstacleHelper(void){
-
-  /*
-  static boolean first_is = true;
-    uint8_t switc_ctrl = 0;
+void ApplicationFunctionSet::ApplicationFunctionSet_AToBNavigation(void){
+  //Navigates to a set of predetermined coordinates
+  //If it meets an obstacle it avoids and then reroutes based on the displacement
+  //Then it has the ability to navigate back home
+  //int angle = 34;
+  //int angleAdjustmentTime = 34 * (40/9);
+  //int distance = 72*69;//10050;
+  if (Application_SmartRobotCarxxx0.Functional_Mode == Custom_mode3 && Executing_NewCoordinates == true){
+    float destinationAngle;
     uint16_t get_Distance;
-    if (first_is == true) //Enter the mode for the first time, and modulate the steering gear to 90 degrees
-    {
-      AppServo.DeviceDriverSet_Servo_control(90);
-      first_is = false;
-    }
-
-    AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
-    if (function_xxx(get_Distance, 0, 20))
-    {
-      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
-
-      for (uint8_t i = 1; i < 6; i += 2) //1、3、5 Omnidirectional detection of obstacle avoidance status
-      {
-        AppServo.DeviceDriverSet_Servo_control(30 * i );
-        delay_xxx(1);
-        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
-
-        if (function_xxx(get_Distance, 0, 20))
-        {
-          ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
-          if (5 == i)
-          {
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Backward, 50);
-            delay_xxx(500);
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
-            delay_xxx(50);
-            first_is = true;
-            break;
-          }
-        }
-        else
-        {
-          switc_ctrl = 0;
-          switch (i)
-          {
-          case 1:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
-            break;
-          case 3:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
-            break;
-          case 5:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
-            break;
-          }
-          delay_xxx(50);
-          first_is = true;
-          break;
-        }
+    if(X_Position != 0 && Y_Position > 0){
+      destinationAngle = atan2(abs(X_Position),abs(Y_Position)) * (180.0/M_PI);
+    } else if(X_Position != 0 && Y_Position < 0){
+      destinationAngle = (atan2(abs(X_Position),abs(Y_Position)) * (180.0/M_PI)) + 90;
+    } else if(X_Position != 0 && Y_Position == 0){
+      destinationAngle = 90;
+    } else if(X_Position == 0){
+      if(Y_Position > 0){
+        destinationAngle == 0;
+      } else if(Y_Position < 0){
+        destinationAngle = 180;
+      } else {
+        destinationAngle = 360;
       }
     }
-    else if (function_xxx(get_Distance, 21, 70)){
-      for (uint8_t i = 1; i < 6; i += 2){
-        AppServo.DeviceDriverSet_Servo_control(30 * i);
-        delay_xxx(1);
-        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
-
-        if (function_xxx(get_Distance, 0, 20)){
-          if (5 == i){
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Backward, 50);
-            delay_xxx(500);
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
-            delay_xxx(50);
-            first_is = true;
-            break;
-          }
-        } else {
-          switc_ctrl = 0;
-          switch (i)
-          {
-          case 1:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(RightForward, 50);
-            break;
-            //ApplicationFunctionSet_SmartRobotCarMotionControl(RightForward, 50);
-          case 3:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
-            break;
-          case 5:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(LeftForward, 50);
-            break;
-          }
-          delay_xxx(50);
-          first_is = true;
-          break;
-        }
-      }
+    int angleAdjustmentTime = destinationAngle * (3.77);//42/9 is too little and 43/9 is too much 171/36 is too little
+    float destinationDistance = sqrt((X_Position *X_Position) + (Y_Position * Y_Position));
+    int distanceTimeBuffer = destinationDistance*55;
+    if(X_Position < 0){
+      ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 150);
     } else {
-      ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
+      ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 150);
     }
-    */
-static bool first_is = true;
-  if (Application_SmartRobotCarxxx0.Functional_Mode == ObstacleAvoidance_mode)
-  {
-    uint8_t switc_ctrl = 0;
-    uint16_t get_Distance;
-    if (first_is == true) //Enter the mode for the first time, and modulate the steering gear to 90 degrees
-    {
-      AppServo.DeviceDriverSet_Servo_control(90 /*Position_angle*/);
-      first_is = false;
-    }
-    //if (Car_LeaveTheGround == false)
-    //{
-      //ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
-      //return;
-    //}
-
-    AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance /*out*/);
-    if (function_xxx(get_Distance, 0, 20))
-    {
-      ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
-
-      for (uint8_t i = 1; i < 6; i += 2) //1、3、5 Omnidirectional detection of obstacle avoidance status
-      {
-        AppServo.DeviceDriverSet_Servo_control(30 * i /*Position_angle*/);
-        delay_xxx(1);
-        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance /*out*/);
-
-        if (function_xxx(get_Distance, 0, 20))
-        {
-          ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
-          if (5 == i)
-          {
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Backward, 150);
-            delay_xxx(500);
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 150);
+    delay_xxx(angleAdjustmentTime);
+    ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+    delay_xxx(500);
+    
+    ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 50);
+    for(int i = 0;i < distanceTimeBuffer;++i){
+      /*
+        AppULTRASONIC.DeviceDriverSet_ULTRASONIC_Get(&get_Distance);
+        if(function_xxx(get_Distance, 0, 30)){
+          if(Recently_VisitedRight == true){
+            ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
             delay_xxx(50);
-            first_is = true;
-            break;
+            for(int i = 0; i < 5; ++i){
+              //ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+              //delay_xxx(100);
+              //tracking if branch
+              if(function_xxx(TrackingData_L, TrackingDetection_S, TrackingDetection_E)){
+                ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 50);
+                Recently_VisitedRight = false;
+                delay_xxx(100);
+              } else {
+                ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 50);
+                delay_xxx(100);
+              }              
+            }
+           }
           }
+         }
         }
-        else
-        {
-          switc_ctrl = 0;
-          switch (i)
-          {
-          case 1:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Right, 150);
-            break;
-          case 3:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 150);
-            break;
-          case 5:
-            ApplicationFunctionSet_SmartRobotCarMotionControl(Left, 150);
-            break;
-          }
-          delay_xxx(50);
-          first_is = true;
-          break;
-        }
-      }
+       */
+      delay_xxx(1);
     }
-    else //if (function_xxx(get_Distance, 20, 50))
-    {
-      ApplicationFunctionSet_SmartRobotCarMotionControl(Forward, 150);
-    }
+    ApplicationFunctionSet_SmartRobotCarMotionControl(stop_it, 0);
+    Executing_NewCoordinates = false;
   }
-  else
-  {
-    first_is = true;
-  }
+  
+  /*
+   * Step 1: Nav from A to B(predetermined coordinate) -> Completed
+   * Step 2: Receive X and Y from user and nav from A to B(X,Y + A) -> Pending
+   * Step 3: Receive X,Y, and Speed from user and nav from A to B at user's speed -> Pending
+   * Step 4: Return Home feature
+   * Step 5: Obstacle Avoidance
+   * Multiply the desired angle by 40/9 to get the corresponding delay in MS
+   * for all -X values turn left; for all +X values turn right
+   * This line is used in Obstacle avoidance; i * 30 results in 30, 90, and 150 degrees
+   * AppServo.DeviceDriverSet_Servo_control(30 * i);
+   * 
+   * So if location is 40, 60
+   * Then opposite = 60
+   * And adjacent = 40
+   * So angle is sin^-1(O/H)
+   * H is 72.11 CM
+   * inverse sine of 60/72.11 = 56.31 degrees
+   * So we need to set the angle to 56 and the distance to 72 ish
+   * 
+   *If location is 40, -60
+   *Then distance is still 72.11
+   *And angle is 360 - 56.31 or 304ish
+   * 
+   * Use code from line 1983 to read in serial port data for the latest coordinates to plot
+   */
+ // }
 }
-
-//End of new function
 
 /*Rocker control mode*/
 void ApplicationFunctionSet::ApplicationFunctionSet_Rocker(void)
@@ -2285,6 +2247,11 @@ void ApplicationFunctionSet::ApplicationFunctionSet_SerialPortDataAnalysis(void)
         else if (5 == doc["D1"])
         {
           Application_SmartRobotCarxxx0.Functional_Mode = Custom_mode2;
+        } else if (6 == doc["D1"]){
+          Application_SmartRobotCarxxx0.Functional_Mode = Custom_mode3;//{N:101,D1:6} character
+          X_Position = doc["X"];
+          Y_Position = doc["Y"];
+          Executing_NewCoordinates = true;
         }
 
 #if _is_print
