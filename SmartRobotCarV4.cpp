@@ -55,13 +55,9 @@ void loop()
   Application_FunctionSet.ApplicationFunctionSet_Standby();
   Application_FunctionSet.ApplicationFunctionSet_IRrecv();
   Application_FunctionSet.ApplicationFunctionSet_AutoPilot();
-  //Application_FunctionSet.ApplicationFunctionSet_CustomApp();
+  Application_FunctionSet.ApplicationFunctionSet_AutoPilotWithObstacleAvoidance();
+  Application_FunctionSet.ApplicationFunctionSet_AToBNavigation();
   Application_FunctionSet.ApplicationFunctionSet_SerialPortDataAnalysis();
-  //int customCommand = Event();
-  //if(customCommand == 1){
-    //Application_FunctionSet.ApplicationFunctionSet_CustomApp();
-    //Application_FunctionSet.ApplicationFunctionSet_SensorDataUpdate();
-    //}
 
   Application_FunctionSet.CMD_ServoControl_xxx0();
   Application_FunctionSet.CMD_MotorControl_xxx0();
