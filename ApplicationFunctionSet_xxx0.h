@@ -29,6 +29,7 @@ public:
   void ApplicationFunctionSet_SerialPortDataAnalysis(void);
   void ApplicationFunctionSet_CustomApp(void);        //Custom Application Manager
   void ApplicationFunctionSet_AutoPilotWithObstacleAvoidance(void);
+  void ApplicationFunctionSet_AToBNavigation(void);
   void ApplicationFunctionSet_IRrecv(void);
   void ApplicationFunctionSet_AutoPilot(void);       //Custom Application AutoPilot
 
@@ -75,6 +76,9 @@ private:
 public:
   boolean Car_LeaveTheGround = true;
   boolean Recently_VisitedRight = false;
+  int X_Position;
+  int Y_Position;
+  boolean Executing_NewCoordinates = false;
   /*Sensor Threshold Setting*/
   const float VoltageDetection = 7.00;
   const uint8_t ObstacleDetection = 20;
